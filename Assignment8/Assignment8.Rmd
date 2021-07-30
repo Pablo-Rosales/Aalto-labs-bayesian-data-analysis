@@ -1,0 +1,316 @@
+---
+title: "BDA - Assignment 8"
+author: "Anonymous"
+output: 
+  pdf_document: 
+    toc: yes
+    toc_depth: 1
+---
+
+$\pagebreak$
+
+
+# Load packages
+```{r}
+library(aaltobda)
+library(rstan)
+data("factory")
+library(loo)
+SEED <- 48927 # set random seed for reproducability
+```
+
+# Exercise 1
+
+## Separate
+
+### 1
+```{r include=FALSE}
+# Run stan for the separate model
+separate_model <- stan_model("separate.stan")
+separate_data <- list(y=factory,
+                      N=nrow(factory),
+                      J=ncol(factory),
+                      p_mu=10,
+                      p_alpha=1,
+                      p_beta=1)
+
+separate_sampling <- sampling(separate_model, data=separate_data)
+```
+
+```{r eval=FALSE}
+# Run stan for the separate model
+separate_model <- stan_model("separate.stan")
+separate_data <- list(y=factory,
+                      N=nrow(factory),
+                      J=ncol(factory),
+                      p_mu=10,
+                      p_alpha=1,
+                      p_beta=1)
+
+separate_sampling <- sampling(separate_model, data=separate_data)
+```
+
+The matrix is extracted as:
+```{r}
+log_lik_separate <- extract_log_lik(separate_sampling)
+```
+
+### 2
+The PSIS-LOO values elpd for the separate model are computed as:
+```{r}
+loo_separate <- loo(log_lik_separate, r_eff=NULL, save_psis=FALSE, cores=getOption("mc.cores", 1), is_method = c("psis", "tis", "sis"))
+loo_separate
+```
+
+
+### 3
+Finally, the lppd is computed with the proposed equation:
+$$
+lppd = \sum_{i=1}^{n}log(\frac{1}{S}\sum_{s=1}^{S}p(y_i|\theta^s))
+$$
+Which is implemented in the following function that receives the matrix containing the log-likelihood values of each observation for every posterior draw:
+```{r}
+compute_lppd <- function(matrix){
+  sum_2 <- 0
+  for (i in 1:ncol(matrix)){
+    sum_1 <- 0
+    for(j in 1:nrow(matrix)){
+      sum_1 <- sum_1 + matrix[j,i]
+    }
+    sum_2 = sum_2 + sum_1/nrow(matrix)
+  }
+  return(sum_2)
+}
+```
+
+Finally, the effective number of parameters can be computed as:
+```{r}
+lppd_separate <- compute_lppd(log_lik_separate)
+peff_separate <- lppd_separate - loo_separate$elpd_loo
+peff_separate
+```
+The effective number of parameters is, approximately, `r peff_separate`.
+
+### 4
+According to the Pareto k estimates, all of them are under 0.7, meaning that the estimates can be considered reliable. The value of k represents how fast the estimate is in terms of convergence. If k were greater than 0.7, there would be impractical convergence rates. In the separate model case, the majority of the values are under 0.5, so the distribution of raw importance ratios has finite variance and the central limit theorem holds.
+
+### 5
+The comparison is done at the end of the assignment.
+
+## Hierarchical
+
+### 1
+```{r include=FALSE}
+# Run stan for the hierarchical model
+hierarchical_model <- stan_model("hierarchical.stan")
+hierarchical_data <- list(y=factory,
+                      N=nrow(factory),
+                      J=ncol(factory),
+                      p_mu=10,
+                      p_alpha=1,
+                      p_beta=1)
+
+hierarchical_sampling <- sampling(hierarchical_model, data=hierarchical_data)
+```
+
+The requested matrix is:
+```{r}
+log_lik_hierarchical <- extract_log_lik(hierarchical_sampling)
+```
+
+### 2
+The PSIS-LOO values are:
+```{r}
+loo_hierarchical <- loo(log_lik_hierarchical, r_eff=NULL, save_psis=FALSE, cores=getOption("mc.cores", 1), is_method = c("psis", "tis", "sis"))
+loo_hierarchical
+```
+
+### 3
+As proceeded before, the effective number of samples is:
+```{r}
+lppd_hierarchical <- compute_lppd(log_lik_hierarchical)
+peff_hierarchical <- lppd_hierarchical - loo_hierarchical$elpd_loo
+peff_hierarchical
+```
+It yields an approximated result of `r peff_hierarchical`.
+
+### 4
+In this case, there are some estimates whose k value is over 0.7, meaning that they are not good, so technically, the previous model yields better results when measuring with the loo technique. However, the majority of the values remains in a good position, under 0.5.
+
+### 5
+The comparison is done at the end of the assignment.
+
+## Pooled
+
+### 1
+```{r include=FALSE}
+# Run stan for the pooled model
+pooled_model <- stan_model("pooled.stan")
+pooled_data <- list(y=factory,
+                    N=nrow(factory),
+                    J=ncol(factory),
+                    p_mu=10,
+                    p_alpha=1,
+                    p_beta=1)
+
+pooled_sampling <- sampling(pooled_model, data=pooled_data)
+```
+
+The requested matrix is:
+```{r}
+log_lik_pooled <- extract_log_lik(pooled_sampling)
+```
+
+### 2
+The PSIS-LOO values are:
+```{r}
+loo_pooled <- loo(log_lik_pooled, r_eff=NULL, save_psis=FALSE, cores=getOption("mc.cores", 1), is_method = c("psis", "tis", "sis"))
+loo_pooled
+```
+
+### 3
+As in the previous cases, the effective number of samples is computed as:
+```{r}
+lppd_pooled <- compute_lppd(log_lik_pooled)
+peff_pooled <- lppd_pooled - loo_pooled$elpd_loo
+peff_pooled
+```
+It yields an approximated result of `r peff_pooled`.
+
+### 4
+When using the proposed metric, the pooled model yields the best results comparing with the previous cases. All its k-values are under 0.5, meaning that the distribution of raw importance ratios has finite variance and the central limit theorem holds. Then, the PSIS-based estimates can be considered reliable.
+
+### 5
+According to the expected log predictive density, it makes sense that that one with a greater value yields a better performance when predicting new samples. It is the case of the hierarchical model. When performing the comparison, the following is obtained.
+```{r}
+loo_compare(loo_separate, loo_hierarchical, loo_pooled)
+```
+
+$\pagebreak$
+
+# Appendix
+Stan codes for the three models:
+
+## Separate
+```{r eval=FALSE}
+data {
+  int < lower =0 > N ;
+  int < lower =0 > J ;
+  vector [ J ] y [ N ];
+  int p_mu;
+  int < lower =0 > p_alpha;
+  int < lower =0 > p_beta;
+}
+parameters {
+  vector [ J ] mu ;
+  vector < lower =0 >[ J ] sigma ;
+}
+model {
+  // priors
+  for ( j in 1: J ){
+    mu [ j ] ~ normal (0 , p_mu);
+    sigma [ j ] ~ gamma (p_alpha, p_beta);
+  }
+  // likelihood
+  for ( j in 1: J )
+    y [ , j ] ~ normal ( mu [ j ] , sigma [ j ]);
+}
+generated quantities {
+  real ypred ;
+  vector [J] log_lik [N];
+  // Compute predictive distribution for the first machine
+  ypred = normal_rng ( mu [6] , sigma [6]);
+  for (j in 1:J){
+    for (n in 1:N){
+      log_lik[n,j] = normal_lpdf(y[n,j] | mu[j], sigma[j]);
+    }
+  }
+}
+```
+
+
+## Hierarchical
+```{r eval=FALSE}
+data {
+  int < lower =0 > N ;
+  int < lower =0 > J ;
+  vector [ J ] y [ N ];
+  int < lower =0 > p_mu;
+  int < lower =0 > p_alpha;
+  int < lower =0 > p_beta;
+}
+parameters {
+  vector [ J ] mu ;
+  real tau;
+  real <lower=0> theta;
+  real <lower=0> sigma ;
+}
+model {
+  // Hyperpriors
+  tau ~ normal(0, p_mu);
+  theta ~ gamma(p_alpha, p_beta);
+  
+  // Priors
+  for (j in 1: J ){
+    mu[ j ] ~ normal (tau, theta);
+  }
+  sigma ~ gamma(1,1);
+  // likelihood
+  for ( j in 1: J )
+    y [ , j ] ~ normal ( mu [ j ] , sigma);
+}
+generated quantities {
+  real ypred ;
+  vector [J] log_lik [N];
+  // Compute predictive distribution for the sixth machine
+  ypred = normal_rng ( mu [6] , sigma);
+  for (j in 1:J){
+    for (n in 1:N){
+      log_lik[n,j] = normal_lpdf(y[n,j] | mu[j], sigma);
+    }
+  }
+}
+
+```
+
+
+## Pooled
+```{r eval=FALSE}
+data {
+  int < lower =0 > N ;
+  int < lower =0 > J ;
+  vector [ J ] y [ N ];
+  int < lower =0 > p_mu;
+  int < lower =0 > p_alpha;
+  int < lower =0 > p_beta;
+}
+parameters {
+  real mu ;
+  real sigma ;
+}
+model {
+  // priors
+  mu ~ normal (0 , p_mu);
+  sigma  ~ gamma (p_alpha, p_beta);
+  // likelihood
+  for ( j in 1: J )
+    y [ , j ] ~ normal ( mu  , sigma );
+}
+generated quantities {
+  real ypred ;
+  vector [J] log_lik [N];
+  // Compute predictive distribution for the first machine
+  ypred = normal_rng ( mu, sigma);
+  for (j in 1:J){
+    for (n in 1:N){
+      log_lik[n,j] = normal_lpdf(y[n,j] | mu, sigma);
+    }
+  }
+}
+```
+
+
+
+
+
+

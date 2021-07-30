@@ -1,0 +1,184 @@
+
+
+## Separate
+
+In the separate model, each machine has its own model, meaning that they have different standard deviation $\sigma_j$ for each group $j$. Since the priors must be weakly informative priors, following the recommendation in the book BDA3, *in the general problem of estimating a normal mean, a $N(0,A^2)$ prior distribution is weakly informative, with $A$ set to some large value that depends on the context of the problem*. The standard deviation of the normal distribution must provide a range large enough to avoid the prior to become informative, but, somehow, related to the context of the problem. In the given case, the square average of the measurements for each of the machines is taken as standard deviation of the Normal distribution that defines the parameter $\mu_j$.
+In the case of the prior for the standard deviation, initially, makes sense to use an inverse-gamma distribution with very small parameters $\alpha$ and $\beta$, such as $\alpha=0.001$ and $\beta=0.01$. Since the inverse-gamma distribution can be expressed as an $inverse-X^2$ distribution with scale $s^2=\frac{\beta}{\alpha}$, then 10 seems to be a reasonable parameter for the given model.
+
+$\linebreak$
+
+Described in mathematical notation:
+$$
+y_{ij} \sim N(\mu_j, \sigma_j) \\
+\mu_j \sim N(0, \tilde{\mu}_j^2) \\
+\sigma_j \sim Inv-X^2(10)
+$$
+
+## Hierarchical
+A potential option for the hierarchical model, in which the same standard deviation is used for all the groups could be as following:
+
+
+
+
+Where $\tilde{\mu}_j$ represents the mean of the samples for the machine $j$.
+
+
+```{r}
+p_mu <- seq(0,0,length.out=ncol(factory))
+p_mu[1] <- mean(factory$V1)^2
+p_mu[2] <- mean(factory$V2)^2
+p_mu[3] <- mean(factory$V3)^2
+p_mu[4] <- mean(factory$V4)^2
+p_mu[5] <- mean(factory$V5)^2
+p_mu[6] <- mean(factory$V6)^2
+
+p_sigma <- seq(0,0,length.out=ncol(factory))
+p_sigma[1] <- 10
+p_sigma[2] <- 10
+p_sigma[3] <- 10
+p_sigma[4] <- 10
+p_sigma[5] <- 10
+p_sigma[6] <- 10
+
+p_mu
+p_sigma
+```
+
+
+
+```{r include=FALSE}
+# Run stan for the separate model
+separate_model <- stan_model("separate.stan")
+separate_data <- list(y=factory,
+                      N=nrow(factory),
+                      J=ncol(factory),
+                      p_mu=p_mu,
+                      p_sigma=p_sigma)
+
+separate_sampling <- sampling(separate_model, data=separate_data)
+```
+
+
+```{r}
+separate_sampling
+```
+
+```{r}
+draws_separate <- rstan::extract(separate_sampling, permuted = T)
+
+pars_separate <- intersect(names(draws_separate), c('ypred'))
+draws_separate <- as.data.frame(separate_sampling)
+phist_separate <- mcmc_hist(draws_separate, pars = c(pars_separate,names(draws_separate)[6]), binwidth = 2.5)
+```
+
+```{r}
+grid.arrange(phist_separate,  nrow = 1)
+```
+
+
+## Hierarchical
+
+Describing the model in mathematical notation:
+$$
+y_{ij} \sim N(\mu_j, \sigma) \\
+\mu_j \sim N(0, \tilde{\mu}_j^2) \\
+\sigma \sim Inv-X^2(10)
+$$
+Where $\tilde{\mu}_j$ represents the mean of the samples for the machine $j$.
+
+```{r}
+p_mu <- seq(0,0,length.out=ncol(factory))
+p_mu[1] <- mean(factory$V1)^2
+p_mu[2] <- mean(factory$V2)^2
+p_mu[3] <- mean(factory$V3)^2
+p_mu[4] <- mean(factory$V4)^2
+p_mu[5] <- mean(factory$V5)^2
+p_mu[6] <- mean(factory$V6)^2
+
+p_mu
+```
+
+
+```{r include=FALSE}
+# Run stan for the separate model
+hierarchical_model <- stan_model("hierarchical.stan")
+hierarchical_data <- list(y=factory,
+                      N=nrow(factory),
+                      J=ncol(factory),
+                      p_mu=p_mu,
+                      p_sigma=10)
+
+hierarchical_sampling <- sampling(hierarchical_model, data=hierarchical_data)
+```
+
+```{r}
+hierarchical_sampling
+```
+
+```{r}
+draws_hierarchical <- rstan::extract(hierarchical_sampling, permuted = T)
+
+pars_hierarchical <- intersect(names(draws_hierarchical), c('ypred'))
+draws_hierarchical <- as.data.frame(hierarchical_sampling)
+phist_hierarchical<- mcmc_hist(draws_hierarchical, pars = c(pars_hierarchical,names(draws_hierarchical)[6]), binwidth = 2.5)
+```
+
+```{r}
+grid.arrange(phist_hierarchical,  nrow = 1)
+```
+
+
+## Pooled
+In the pooled model, all the machines share the same parameters for the distributions describing the mean and the standard deviation of the posterior one. The parameter characterizing the distribution that describes the standard deviation $\sigma$ will remain as in the previous case, with a value of 10. In the case of the normal distribution describing the mean $\mu$, the value for the standard deviation will be big enough to provide a range that avoids a high potential influence in the final result, while maintaining some relationship with the context. Being computed the mean for the data of each of the machines, the square of the greatest one is considered the parameter for the aforementioned normal distribution.
+
+$\linebreak$
+
+The mathematical expression for the model is:
+$$
+y_{ij} \sim N(\mu_j, \sigma) \\
+\mu \sim N(0, max[\tilde{\mu}_j^2]) \\
+\sigma \sim Inv-X^2(10)
+$$
+Where $\tilde{\mu}_j$ represents the mean of the samples for the machine $j$.
+
+```{r}
+p_mu <- seq(0,0,length.out=ncol(factory))
+p_mu[1] <- mean(factory$V1)^2
+p_mu[2] <- mean(factory$V2)^2
+p_mu[3] <- mean(factory$V3)^2
+p_mu[4] <- mean(factory$V4)^2
+p_mu[5] <- mean(factory$V5)^2
+p_mu[6] <- mean(factory$V6)^2
+
+p_mu
+round(max(p_mu))
+```
+
+```{r include=FALSE}
+# Run stan for the separate model
+pooled_model <- stan_model("pooled.stan")
+pooled_data <- list(y=factory,
+                    N=nrow(factory),
+                    J=ncol(factory),
+                    p_mu=round(max(p_mu)),
+                    p_sigma=10)
+
+pooled_sampling <- sampling(pooled_model, data=pooled_data)
+```
+
+```{r}
+pooled_sampling
+```
+
+```{r}
+draws_pooled <- rstan::extract(pooled_sampling, permuted = T)
+
+pars_pooled <- intersect(names(draws_pooled), c('ypred'))
+draws_pooled <- as.data.frame(pooled_sampling)
+phist_pooled <- mcmc_hist(draws_pooled, pars = c(pars_pooled,names(draws_pooled)[1]), binwidth = 2.5)
+```
+
+```{r}
+grid.arrange(phist_pooled,  nrow = 1)
+```
+

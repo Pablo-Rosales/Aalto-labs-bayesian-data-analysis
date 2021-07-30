@@ -1,0 +1,179 @@
+---
+title: "BDA - Assignment 9"
+author: "Anonymous"
+output: 
+  pdf_document: 
+    toc: yes
+    toc_depth: 1
+---
+
+$\pagebreak$
+
+# Load packages
+```{r}
+library(aaltobda)
+library(rstan)
+data("factory")
+head(factory)
+```
+
+# Exercise 1
+Initially, the utility function was coded and tried with the proposed y_pred:
+
+```{r}
+# Utiliy function
+utility <- function(draws){
+  sums <- 0
+  subs <- 106*length(draws)
+  for (i in draws){
+    if (i>85){
+      sums <- sums + 200
+    }
+  }
+  return ((sums-subs)/length(draws))
+}
+```
+
+```{r}
+# Utility computation of the provided y_pred test case
+y_pred_mark <- c(123.80, 85.23, 70.16, 80.57, 84.91)
+utility_mark <- utility(y_pred_mark)
+utility_mark
+```
+The stan model is executed and fitted with the following code lines:
+```{r include=FALSE}
+# Run stan for the hierarchical model
+hierarchical_model <- stan_model("hierarchical.stan")
+hierarchical_data <- list(y=factory,
+                      N=nrow(factory),
+                      J=ncol(factory),
+                      p_mu=10,
+                      p_alpha=1,
+                      p_beta=1)
+
+hierarchical_sampling <- sampling(hierarchical_model, data=hierarchical_data)
+```
+
+
+```{r eval=FALSE}
+# Run stan for the hierarchical model
+hierarchical_model <- stan_model("hierarchical.stan")
+hierarchical_data <- list(y=factory,
+                      N=nrow(factory),
+                      J=ncol(factory),
+                      p_mu=10,
+                      p_alpha=1,
+                      p_beta=1)
+
+hierarchical_sampling <- sampling(hierarchical_model, data=hierarchical_data)
+```
+
+```{r}
+extract_hierarchical <- rstan::extract(hierarchical_sampling, permuted=T)
+```
+
+Now, the utility is computed for the simulated samples as following:
+```{r}
+utility_machines <- c(1:6)
+utility_machines[1] <- utility(extract_hierarchical$ypred1)
+utility_machines[2] <- utility(extract_hierarchical$ypred2)
+utility_machines[3] <- utility(extract_hierarchical$ypred3)
+utility_machines[4] <- utility(extract_hierarchical$ypred4)
+utility_machines[5] <- utility(extract_hierarchical$ypred5)
+utility_machines[6] <- utility(extract_hierarchical$ypred6)
+```
+
+The obtained utilities are:
+
+* The utility for the first machine is `r utility_machines[1]`
+* The utility for the second machine is `r utility_machines[2]`
+* The utility for the third machine is `r utility_machines[3]`
+* The utility for the fourth machine is `r utility_machines[4]`
+* The utility for the fifth machine is `r utility_machines[5]`
+* The utility for the sixth machine is `r utility_machines[6]`
+
+# Exercise 2
+Given the previous values, the machines can be sorted from the worst one to the best one as: (1, 6, 3, 5, 2, 4).
+
+$\linebreak$
+
+The utility values give an idea of how profitable the machine is. The computation of the utility is a subtraction of the costs (including salaries, raw materials, maintenance, or initial investment; 106€ in total per product) from the revenues (200€ per sold product), hence, those machines with a positive utility value are profitable, since they produce more revenues than costs. However, many of them do not make any profit, since the costs are higher than the revenues. In the given case, only machines 2, 4 and 5 are profitable, since the utility function yields a positive value for them. The rest of the machines are not profitable.
+
+# Exercise 3
+The expected utility of the products for a 7th machine is extracted as:
+```{r}
+utility_machine7 <- utility(extract_hierarchical$ypred7)
+```
+The computed utility for the 7th machine is `r utility_machine7`.
+
+# Exercise 4
+Given the preivously computed utility, the owner should not buy a new machine, since its utility would be negative and, hence it would not be profitable.
+
+# Exercise 5
+Stan code for the hierarchical model:
+```{r eval=FALSE}
+data {
+  int < lower =0 > N ;
+  int < lower =0 > J ;
+  vector [ J ] y [ N ];
+  int < lower =0 > p_mu;
+  int < lower =0 > p_alpha;
+  int < lower =0 > p_beta;
+}
+parameters {
+  vector [ J ] mu ;
+  real tau;
+  real <lower=0> theta;
+  real <lower=0> sigma ;
+}
+model {
+  // Hyperpriors
+  tau ~ normal(0, p_mu);
+  theta ~ gamma(p_alpha, p_beta);
+  
+  // Priors
+  for (j in 1: J ){
+    mu[ j ] ~ normal (tau, theta);
+  }
+  sigma ~ gamma(1,1);
+  // likelihood
+  for ( j in 1: J )
+    y [ , j ] ~ normal ( mu [ j ] , sigma);
+}
+generated quantities {
+  real ypred1;
+  real ypred2;
+  real ypred3;
+  real ypred4;
+  real ypred5;
+  real ypred6;
+  real ypred7;
+  real mu_7;
+  
+  vector [J] log_lik [N];
+  // Compute predictive distribution for the sixth machine
+  ypred1 = normal_rng ( mu [1] , sigma);
+  ypred2 = normal_rng ( mu [2] , sigma);
+  ypred3 = normal_rng ( mu [3] , sigma);
+  ypred4 = normal_rng ( mu [4] , sigma);
+  ypred5 = normal_rng ( mu [5] , sigma);
+  ypred6 = normal_rng ( mu [6] , sigma);
+  
+  mu_7 = normal_rng(tau, theta);
+  ypred7 = normal_rng(mu_7, sigma);
+  
+  for (j in 1:J){
+    for (n in 1:N){
+      log_lik[n,j] = normal_lpdf(y[n,j] | mu[j], sigma);
+    }
+  }
+}
+```
+
+
+
+
+
+
+
+

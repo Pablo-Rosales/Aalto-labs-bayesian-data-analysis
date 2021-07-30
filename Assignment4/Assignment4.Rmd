@@ -1,0 +1,288 @@
+---
+title: "BDA - Assignment 4"
+author: "Anonymous"
+output: 
+  pdf_document: 
+    toc: yes
+    toc_depth: 1
+---
+# Load packages
+```{r}
+library(aaltobda)
+data("bioassay_posterior")
+data("bioassay")
+head(bioassay_posterior)
+bioassay
+```
+
+# Exercise 1
+
+## a)
+Given the prior distribution for each of the parameters as:
+$$\alpha \propto N(0,2^2)$$
+$$\beta \propto N(10,10^2)$$
+And the correlation between them:
+$$corr(\alpha, \beta) = 0.6$$
+
+The full mean of the bivariate normal posterior is:
+$$\bar{\mu} = (\mu_{\alpha}, \mu_{\beta}) = (0, 10)$$
+
+The covariance matrix is:
+$$
+\sum = \begin{pmatrix}
+\sigma_{\alpha}^2 & \rho\sigma_{\alpha}\sigma_{\beta} \\
+\rho\sigma_{\alpha}\sigma_{\beta} & \sigma_{\beta}^2\\
+\end{pmatrix} =
+\begin{pmatrix}
+2^2 & 0.6.2.10 \\
+0.6.2.10 & 10^2\\
+\end{pmatrix} =
+\begin{pmatrix}
+4 & 12 \\
+12 & 100\\
+\end{pmatrix}
+$$
+So, the posterior distribution is:
+$$
+\begin{pmatrix}
+x_1\\
+x_2 \\
+\end{pmatrix} =
+N
+\begin{bmatrix}
+\begin{pmatrix}
+\mu_1 \\
+\mu_2 \\
+\end{pmatrix},
+\begin{pmatrix}
+\sigma_{\alpha}^2 & \rho\sigma_{\alpha}\sigma_{\beta} \\
+\rho\sigma_{\alpha}\sigma_{\beta} & \sigma_{\beta}^2\\
+\end{pmatrix}
+\end{bmatrix}
+$$
+
+```{r}
+# Posterior distribution
+mean_vector <- c(0,10);
+covariance_matrix <- matrix(c(4, 12, 12, 100),2)
+joint_posterior <- rmvnorm(4000, mean=mean_vector, sigma=covariance_matrix)
+head(joint_posterior)
+print(covariance_matrix)
+print(mean_vector)
+```
+
+
+## b)
+
+```{r}
+alpha_samples <- bioassay_posterior$alpha
+beta_samples <- bioassay_posterior$beta
+S = length(alpha_samples)
+
+mean_alpha <- mean(alpha_samples)
+mean_beta <- mean(beta_samples)
+var_alpha <- var(alpha_samples)
+var_beta <- var(beta_samples)
+
+#Quantiles:
+
+alpha_5 <- quantile(alpha_samples, probs = 0.05)
+alpha_95 <- quantile(alpha_samples, probs = 0.95)
+
+beta_5 <- quantile(beta_samples, probs = 0.05)
+beta_95 <- quantile(beta_samples, probs = 0.95)
+
+#Mean MCSE
+mean_alpha_mcse <- sqrt(var_alpha/S)
+mean_beta_mcse <- sqrt(var_beta/S)
+
+mean_alpha
+mean_beta
+mean_alpha_mcse
+mean_beta_mcse
+
+#Quantile MCSE
+alpha_5_mcse <- mcse_quantile(alpha_samples, prob=0.05)
+alpha_95_mcse <- mcse_quantile(alpha_samples, prob=0.95)
+alpha_90_mcse <- mcse_quantile(alpha_samples, prob=0.9)
+beta_5_mcse <- mcse_quantile(beta_samples, prob=0.05)
+beta_95_mcse <- mcse_quantile(beta_samples, prob=0.95)
+beta_90_mcse <- mcse_quantile(beta_samples, prob=0.9)
+
+#print("quantiles alpha")
+#alpha_5
+#alpha_95
+#alpha_5_mcse
+#alpha_95_mcse
+#alpha_90_mcse
+
+#print("quantiles beta")
+#beta_5
+#beta_95
+#beta_5_mcse
+#beta_95_mcse
+#beta_90_mcse
+```
+$\linebreak$
+RESULTS:
+$\linebreak$
+The mean for $\alpha$ is `r mean_alpha` and the MCSE is `r mean_alpha_mcse`, so $\mu_{\alpha} = 1.0$
+$\linebreak$
+The 5% quantile for $\alpha$ is `r alpha_5` and the MCSE is `r alpha_5_mcse`, so $quantile_{\alpha_{5}}= -0.5$
+$\linebreak$
+The 95% quantile for $\alpha$ is `r alpha_95` and the MCSE is `r alpha_95_mcse`, so $quantile_{\alpha_{95}}= 2.6$
+$\linebreak$
+$\linebreak$
+The mean for $\beta$ is `r mean_beta` and the MCSE is `r mean_beta_mcse`, so $\mu_{beta} = 10.6$
+$\linebreak$
+The 5% quantile for $\beta$ is `r beta_5` and the MCSE is `r beta_5_mcse`, so $quantile_{\beta_{5}}= 4.0$
+$\linebreak$
+The 95% quantile for $\beta$ is `r beta_95` and the MCSE is `r beta_95_mcse`, so $quantile_{\beta_{95}}= 19$
+
+## c)
+
+```{r}
+# Function for computing the log importance ratios
+log_importance_weights <- function(alpha, beta){
+  weights_array <- array(0, dim=c(1,length(alpha)))
+  for (i in 1:length(alpha)) {
+    weights_array[i] <- bioassaylp(alpha[i], beta[i], bioassay$x, bioassay$y, bioassay$n)
+  }
+  return(c(weights_array))
+} 
+  
+alpha <- c(1.896, -3.6,  0.374, 0.964, -3.123, -1.581)
+beta <- c(24.76, 20.04, 6.15, 18.65, 8.16, 17.4)
+weights <- round(log_importance_weights(alpha, beta),2)
+head(weights)
+```
+The first six log importance ratios are `r head(weights)`.
+
+## d)
+
+```{r}
+# Function for computing the normalized importance ratios
+normalized_importance_weights <-function(alpha,beta){
+  weights_array_norm <- array(0, dim=c(1,length(alpha)))
+  for (i in 1:length(alpha)) {
+    weights_array_norm[i] <- 
+      exp(bioassaylp(alpha[i], beta[i], bioassay$x, bioassay$y, bioassay$n))
+  }
+  weights_array_norm <- c(weights_array_norm)
+  sum_weights <- sum(weights_array_norm)
+  weights_array_norm_final <- array(0, dim=c(1,length(alpha)))
+  for (i in 1:length(weights_array_norm)){
+    weights_array_norm_final[i] <- weights_array_norm[i]/sum_weights
+  }
+  weights_norm <- c(weights_array_norm_final)
+  return(weights_norm)
+}
+
+alpha <- c(1.896, -3.6,  0.374, 0.964, -3.123, -1.581)
+beta <- c(24.76, 20.04, 6.15, 18.65, 8.16, 17.4)
+weights_normalized <-
+  round(normalized_importance_weights(alpha = alpha, beta = beta),3)
+head(weights_normalized)
+
+```
+The first six normalized log importance ratios are `r head(weights_normalized)`
+
+## e)
+
+```{r}
+n <- 4000
+#alpha_samples <- rnorm(n, 0, 2)
+#beta_samples <- rnorm(n, 10, 10)
+alpha_samples <- (joint_posterior[,1])
+beta_samples <- (joint_posterior[,2])
+weights <- round(log_importance_weights(alpha_samples, beta_samples),2)
+weights_normalized <- round(normalized_importance_weights(alpha = alpha_samples, beta = beta_samples),3)
+hist(weights_normalized, main = "Histogram of the normalized weights")
+head(weights_normalized)
+```
+
+$\linebreak$
+The first six log importance ratios are `r head(weights)`.
+$\linebreak$
+The first six normalized log importance ratios are `r head(weights_normalized)`.
+
+## f)
+
+```{r}
+#alpha <- c(1.896, -3.6,  0.374, 0.964, -3.123, -1.581)
+#beta <- c(24.76, 20.04, 6.15, 18.65, 8.16, 17.4)
+weights <- round(log_importance_weights(alpha_samples, beta_samples),2)
+weights_normalized <- round(normalized_importance_weights(alpha = alpha, beta = beta),3)
+S_eff <- function(alpha, beta){
+  weights_normalized <- normalized_importance_weights(alpha = alpha, beta = beta)
+  den <- 0
+  for (i in weights_normalized){
+    den <- den + i^2
+  }
+  seff <- 1/den
+  return(seff)
+}
+
+s_eff <- round(S_eff(alpha = alpha_samples, beta = beta_samples),3)
+s_eff
+                            
+```
+$\linebreak$
+The importance sampling effective sample size $S_{eff}$ is `r s_eff`.
+
+## g)
+
+If we had the target distribution, the effective sample size would be the number of independent samples drawn from the distribution so we would get an equivalent model. When used for computing an estimate, it means that the quality of the estimate would be the same using a number of samples equal to $S_{eff}$ drawn from the target distribution than the one obtained using the proposal distribution with a certain number of samples (from which depends the value of $S_{eff}$).
+$\linebreak$
+The effective sampling can be extracted from the histogram in exercise (e) looking at the frequency for those importance weights different from zero (frequency of 0.001 plus the frequency of 0.002).
+
+## h)
+
+The expression for computing the posterior mean using importance sampling is:
+$$
+E(h(\theta|y))=\frac{\frac{1}{S} \sum_{S=1}^Sh(\theta^S)w(\theta^S)}{\frac{1}{S}\sum_{S=1}^{S}w(\theta^S)}
+$$
+
+```{r}
+# Function that computes the posterior mean using importance sampling
+posterior_mean <- function(alpha, beta){
+  weights_normalized <- round(normalized_importance_weights(alpha = alpha, beta = beta),3)
+  alpha_posterior_mean <- 0
+  beta_posterior_mean <- 0
+  for (i in 1:length(alpha)){
+    i
+    alpha_posterior_mean <- alpha_posterior_mean + alpha[i]*weights_normalized[i]
+    beta_posterior_mean <- beta_posterior_mean + beta[i]*weights_normalized[i]
+  }
+  return(c(alpha_posterior_mean, beta_posterior_mean))
+}
+alpha <- c(1.896, -3.6,  0.374, 0.964, -3.123, -1.581)
+beta <- c(24.76, 20.04, 6.15, 18.65, 8.16, 17.4)
+posterior_means <- posterior_mean(alpha=alpha_samples, beta=beta_samples)
+
+# MEANS
+posterior_means
+
+# MCSE
+squared_alpha <- alpha_samples^2
+squared_beta <- beta_samples^2
+posterior_means_square <- posterior_mean(alpha=squared_alpha, beta=squared_beta)
+var_alpha <- posterior_means_square[1]-posterior_means[1]^2
+var_beta <- posterior_means_square[2]-posterior_means[2]^2
+
+mcse_alpha <- sqrt(var_alpha/s_eff)
+mcse_beta <- sqrt(var_beta/s_eff)
+
+mcse_alpha
+mcse_beta
+```
+
+$\linebreak$
+Given the previous results:
+$\linebreak$
+The posterior mean for alpha is `r posterior_means[1]` and the MCSE `r mcse_alpha`, so $PosteriorMean_\alpha=0.9$
+$\linebreak$
+The posterior mean for beta is `r posterior_means[2]` and the MCSE `r mcse_beta`, so $PosteriorMean_\beta=8$
+
+
+
